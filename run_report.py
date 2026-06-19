@@ -1,10 +1,12 @@
 import os
+import time
 import datetime
 import requests
 from dotenv import load_dotenv
 from tavily import TavilyClient
 from exa_py import Exa
 from llm_client import chat
+from technical import technical_scan
 
 load_dotenv()
 
@@ -45,7 +47,10 @@ def send_discord(message: str) -> None:
     if not url or "xxxx" in url:
         print("[Discord未設定] レポート出力:\n", message)
         return
-    requests.post(url, json={"content": message[:2000]}, timeout=10)
+    # 2000文字超の場合は分割して送信
+    chunks = [message[i:i+1900] for i in range(0, len(message), 1900)]
+    for chunk in chunks:
+        requests.post(url, json={"content": chunk}, timeout=10)
 
 
 def main():
@@ -62,6 +67,13 @@ def main():
         news = company_scan(exa, stock)
         company_data += f"\n【{stock['name']}({stock['code']})】\n{news}\n"
 
+    print("Step 2b: テクニカル指標計算中（J-Quants）...")
+    technical_data = ""
+    for stock in WATCHLIST:
+        result = technical_scan(stock["code"])
+        technical_data += f"\n{result}\n"
+        time.sleep(5)
+
     print("Step 3: AI分析・レポート生成中...")
     prompt = f"""あなたは日本株のAI投資アナリストです。以下のデータを分析してレポートを生成してください。
 
@@ -71,6 +83,9 @@ def main():
 ## 監視銘柄ニュース
 {company_data}
 
+## テクニカル指標（RSI・MACD・ボリンジャーバンド）
+{technical_data}
+
 ## 出力形式（必ずこの形式で）
 📊 AI予測取引レポート【{today}】
 
@@ -78,8 +93,13 @@ def main():
 ・総合スコア: X/5（リスクオン/中立/オフ）
 ・注目: [最重要ニュース1行]
 
+📉 テクニカルサマリー
+・RSI過熱/割安: [銘柄名と数値]
+・MACD方向性: [各銘柄の強気/弱気]
+・BB位置: [バンド内/上限/下限付近]
+
 🎯 本日のアクション候補
-【買い候補】（根拠付きで）
+【買い候補】（ファンダ＋テクニカル根拠付きで）
 【様子見】（理由付きで）
 
 ⚠️ 注意事項（3点以内）
