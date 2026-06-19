@@ -1,5 +1,6 @@
 anthropic>=0.40.0
 google-genai>=2.0.0
 groq>=1.0.0
+jquants-api-client>=2.0.0
 python-dotenv>=1.0.0
 pytest>=8.0.0
