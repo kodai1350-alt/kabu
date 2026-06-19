@@ -41,6 +41,19 @@ def _call_gemini(prompt: str, model: str) -> str:
     return response.text
 
 
+def _call_groq(prompt: str, model: str) -> str:
+    api_key = os.getenv("GROQ_API_KEY")
+    if not api_key:
+        raise LLMError("GROQ_API_KEY が .env に設定されていません")
+    from groq import Groq
+    client = Groq(api_key=api_key)
+    completion = client.chat.completions.create(
+        model=model,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    return completion.choices[0].message.content
+
+
 def chat(prompt: str, provider: str | None = None) -> str:
     config = _load_config()
     active_provider = provider or config["provider"]
@@ -50,5 +63,7 @@ def chat(prompt: str, provider: str | None = None) -> str:
         return _call_anthropic(prompt, model)
     elif active_provider == "gemini":
         return _call_gemini(prompt, model)
+    elif active_provider == "groq":
+        return _call_groq(prompt, model)
     else:
-        raise LLMError(f"未知のプロバイダー: {active_provider}。'anthropic' か 'gemini' を指定してください")
+        raise LLMError(f"未知のプロバイダー: {active_provider}。'anthropic', 'gemini', 'groq' のいずれかを指定してください")

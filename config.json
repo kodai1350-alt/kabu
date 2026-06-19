@@ -1,7 +1,8 @@
 {
-  "provider": "gemini",
+  "provider": "groq",
   "models": {
     "anthropic": "claude-sonnet-4-6",
-    "gemini": "gemini-2.0-flash"
+    "gemini": "gemini-2.0-flash",
+    "groq": "llama-3.3-70b-versatile"
   }
 }

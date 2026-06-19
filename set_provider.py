@@ -3,7 +3,7 @@ import sys
 from pathlib import Path
 
 CONFIG_PATH = Path(__file__).parent / "config.json"
-VALID_PROVIDERS = ("anthropic", "gemini")
+VALID_PROVIDERS = ("anthropic", "gemini", "groq")
 
 
 def _load_config() -> dict:
@@ -36,7 +36,7 @@ def status() -> None:
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("使い方: python set_provider.py <gemini|anthropic|status>")
+        print("使い方: python set_provider.py <groq|gemini|anthropic|status>")
         sys.exit(1)
 
     command = sys.argv[1]
