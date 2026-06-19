@@ -3,5 +3,6 @@ google-genai>=2.0.0
 groq>=1.0.0
 jquants-api-client>=2.0.0
 tavily-python>=0.3.0
+exa-py>=1.0.0
 python-dotenv>=1.0.0
 pytest>=8.0.0
