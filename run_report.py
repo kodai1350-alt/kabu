@@ -7,6 +7,7 @@ from tavily import TavilyClient
 from exa_py import Exa
 from llm_client import chat
 from technical import technical_scan
+from edinet import scan_watchlist as edinet_scan
 
 load_dotenv()
 
@@ -67,7 +68,10 @@ def main():
         news = company_scan(exa, stock)
         company_data += f"\n【{stock['name']}({stock['code']})】\n{news}\n"
 
-    print("Step 2b: テクニカル指標計算中（J-Quants）...")
+    print("Step 2b: 適時開示スキャン中（EDINET）...")
+    edinet_data = edinet_scan(WATCHLIST)
+
+    print("Step 2c: テクニカル指標計算中（J-Quants）...")
     technical_data = ""
     for stock in WATCHLIST:
         result = technical_scan(stock["code"])
@@ -83,11 +87,17 @@ def main():
 ## 監視銘柄ニュース
 {company_data}
 
+## 適時開示・IR情報（EDINET）
+{edinet_data}
+
 ## テクニカル指標（RSI・MACD・ボリンジャーバンド）
 {technical_data}
 
 ## 出力形式（必ずこの形式で）
 📊 AI予測取引レポート【{today}】
+
+📋 適時開示サマリー
+・[重要開示があれば記載、なければ「特記事項なし」]
 
 🌍 本日のマクロ環境
 ・総合スコア: X/5（リスクオン/中立/オフ）
