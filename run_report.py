@@ -8,6 +8,7 @@ from exa_py import Exa
 from llm_client import chat
 from technical import technical_scan
 from edinet import scan_watchlist as edinet_scan
+from risk_manager import RiskManager
 
 load_dotenv()
 
@@ -17,6 +18,9 @@ WATCHLIST = [
     {"code": "9984", "name": "ソフトバンクグループ"},
     {"code": "4063", "name": "信越化学工業"},
 ]
+
+# 口座残高（環境変数で管理。週次で手動更新）
+ACCOUNT_BALANCE = float(os.getenv("ACCOUNT_BALANCE", "1000000"))
 
 
 def macro_scan(tavily: TavilyClient) -> str:
@@ -54,10 +58,28 @@ def send_discord(message: str) -> None:
         requests.post(url, json={"content": chunk}, timeout=10)
 
 
+def _build_risk_block(rm: RiskManager) -> str:
+    """注文可否チェック結果ブロックを生成"""
+    lines = [rm.status_report(), "", "📋 銘柄別 注文可否（本日）"]
+    # 1銘柄あたり残高15%相当の注文額でチェック
+    order_amount = ACCOUNT_BALANCE * RiskManager.MAX_SINGLE_POSITION
+    for stock in WATCHLIST:
+        ok, reason = rm.check_before_order(stock["code"], order_amount, ACCOUNT_BALANCE)
+        icon = "✅" if ok else "🚫"
+        lines.append(f"  {icon} {stock['name']}({stock['code']}): {reason}")
+    return "\n".join(lines)
+
+
 def main():
     today = datetime.date.today().strftime("%Y/%m/%d")
     tavily = TavilyClient(api_key=os.getenv("TAVILY_API_KEY"))
     exa = Exa(api_key=os.getenv("EXA_API_KEY"))
+
+    # ── リスクマネージャー初期化 ──────────────────────────────
+    rm = RiskManager()
+    risk_status = rm.status_report()
+    trading_ok = rm.check_before_order("_", ACCOUNT_BALANCE * 0.1, ACCOUNT_BALANCE)[0]
+    print(risk_status)
 
     print("Step 1: マクロ環境スキャン中...")
     macro_data = macro_scan(tavily)
@@ -79,7 +101,12 @@ def main():
         time.sleep(5)
 
     print("Step 3: AI分析・レポート生成中...")
+    trading_flag = "⛔ 本日は取引停止中" if not trading_ok else "✅ 取引可能"
     prompt = f"""あなたは日本株のAI投資アナリストです。以下のデータを分析してレポートを生成してください。
+
+## リスク管理状態
+{risk_status}
+取引ステータス: {trading_flag}
 
 ## マクロ環境データ
 {macro_data}
@@ -109,6 +136,7 @@ def main():
 ・BB位置: [バンド内/上限/下限付近]
 
 🎯 本日のアクション候補
+{"【⛔ 取引停止中 — 以下は参考情報のみ】" if not trading_ok else ""}
 【買い候補】（ファンダ＋テクニカル根拠付きで）
 【様子見】（理由付きで）
 
@@ -118,8 +146,12 @@ def main():
 """
     report = chat(prompt, provider="groq")
 
+    # リスクブロックをレポート末尾に追加
+    risk_block = _build_risk_block(rm)
+    full_message = f"{report}\n\n---\n🛡 リスク管理ステータス\n{risk_block}"
+
     print("Step 4: Discord送信中...")
-    send_discord(report)
+    send_discord(full_message)
     print("完了。")
 
 
