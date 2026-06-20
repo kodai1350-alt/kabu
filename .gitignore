@@ -5,3 +5,5 @@ __pycache__/
 *.pyc
 .venv/
 .mcp.json
+
+risk_state.json
