@@ -7,3 +7,4 @@ __pycache__/
 .mcp.json
 
 risk_state.json
+holdings.json
