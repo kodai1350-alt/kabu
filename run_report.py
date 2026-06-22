@@ -185,7 +185,44 @@ def main():
 
 📈 今後1週間の見通し（2〜3文）
 """
-    report = chat(prompt, provider="groq")
+    report = None
+    try:
+        report = chat(prompt, provider="groq")
+    except Exception as e:
+        print(f"  [Groq失敗: {e}] ルールベースレポートに切り替え")
+
+    if not report:
+        sep = "─" * 35
+        report = "\n".join([
+            f"📊 AI予測取引レポート【{today}】",
+            f"（※AI分析なし — データ集計レポート）",
+            "",
+            f"取引ステータス: {trading_flag}",
+            "",
+            sep,
+            market_snapshot,
+            "",
+            stocks_snapshot,
+            sep,
+            "",
+            "📰 本日のニュース（要約）",
+            ddg_news[:600],
+            "",
+            sep,
+            "",
+            "📉 テクニカル分析",
+            technical_data[:1200],
+            "",
+            sep,
+            "",
+            "🔮 来週の予測シナリオ",
+            forecast_data[:1500],
+            "",
+            sep,
+            "",
+            "🤖 AI議論サマリー（Bull/Bear/Quant）",
+            debate_data[:600],
+        ])
 
     # リスクブロックをレポート末尾に追加
     risk_block = _build_risk_block(rm)
