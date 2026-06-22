@@ -2,8 +2,10 @@ name: AI予測取引 毎日レポート
 
 on:
   schedule:
-    - cron: '0 22 * * 1-5'   # 平日朝7時JST（UTC22時）
-    - cron: '30 6 * * 1-5'   # 平日15時30分JST（UTC6時30分）
+    - cron: '0 22 * * 0-4'   # 07:00 JST 平日（UTC日〜木）
+    - cron: '30 2 * * 1-5'   # 11:30 JST 平日（UTC月〜金）
+    - cron: '0 3 * * 1-5'    # 12:00 JST 平日（UTC月〜金）
+    - cron: '30 6 * * 1-5'   # 15:30 JST 平日（UTC月〜金）
   workflow_dispatch:
     inputs:
       report_type:
@@ -13,53 +15,88 @@ on:
         type: choice
         options:
           - morning
+          - morning-close
+          - midday
           - close
 
 jobs:
+  # ── 07:00 朝レポート ──────────────────────────────────────
   morning-report:
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.report_type == 'morning' || github.event.schedule == '0 22 * * 1-5'
+    if: >
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.report_type == 'morning') ||
+      github.event.schedule == '0 22 * * 0-4'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Pythonセットアップ
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
           cache: 'pip'
-
-      - name: 依存関係インストール
-        run: pip install -r requirements.txt
-
-      - name: 朝の予測レポート実行
+      - run: pip install -r requirements.txt
+      - name: 朝レポート実行
         run: python run_report.py
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
           EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
-          JQUANTS_MAIL: ${{ secrets.JQUANTS_MAIL }}
-          JQUANTS_PASSWORD: ${{ secrets.JQUANTS_PASSWORD }}
           JQUANTS_API_KEY: ${{ secrets.JQUANTS_API_KEY }}
-          ALPHA_VANTAGE_API_KEY: ${{ secrets.ALPHA_VANTAGE_API_KEY }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           ACCOUNT_BALANCE: ${{ secrets.ACCOUNT_BALANCE }}
 
-  close-report:
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.report_type == 'close' || github.event.schedule == '30 6 * * 1-5'
+  # ── 11:30 前場終了レポート ────────────────────────────────
+  morning-close-report:
+    if: >
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.report_type == 'morning-close') ||
+      github.event.schedule == '30 2 * * 1-5'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Pythonセットアップ
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
           cache: 'pip'
+      - run: pip install -r requirements.txt
+      - name: 前場終了レポート実行
+        run: python close_report.py morning-close
+        env:
+          JQUANTS_API_KEY: ${{ secrets.JQUANTS_API_KEY }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          ACCOUNT_BALANCE: ${{ secrets.ACCOUNT_BALANCE }}
 
-      - name: 依存関係インストール
-        run: pip install -r requirements.txt
+  # ── 12:00 昼レポート ──────────────────────────────────────
+  midday-report:
+    if: >
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.report_type == 'midday') ||
+      github.event.schedule == '0 3 * * 1-5'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - name: 昼レポート実行
+        run: python midday_report.py
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          ACCOUNT_BALANCE: ${{ secrets.ACCOUNT_BALANCE }}
 
-      - name: 市場終了レポート実行
+  # ── 15:30 後場終了レポート ────────────────────────────────
+  close-report:
+    if: >
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.report_type == 'close') ||
+      github.event.schedule == '30 6 * * 1-5'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - name: 後場終了レポート実行
         run: python close_report.py
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
