@@ -371,6 +371,49 @@ def forecast_stock(
         else:
             lines.append(f"    {ln.strip()}")
 
+    # ── トレーディングプラン（Prompt #7スタイル）──────────────────
+    score = signal["score"]
+    if sr:
+        support    = sr["support"]
+        resistance = sr["resistance"]
+
+        # サポート・レジスタンスを「現在値に近い方」に限定
+        near_sup = support if support >= current * 0.90 else current * 0.93
+        near_res = resistance if resistance <= current * 1.15 else current * 1.07
+
+        # 買い判断（Prompt #2スタイル）
+        if score >= 2:
+            verdict = "今買う"
+            entry_lo = current * 0.995
+            entry_hi = current * 1.005
+            sl       = near_sup * 0.99
+            target   = near_res * 0.99
+        elif score >= 0:
+            verdict = "もう少し待つ"
+            entry_lo = current * 0.97
+            entry_hi = current * 0.99
+            sl       = near_sup * 0.98
+            target   = near_res * 0.99
+        else:
+            verdict = "見送り"
+            entry_lo = current * 0.92
+            entry_hi = current * 0.95
+            sl       = current * 0.90
+            target   = current * 1.03
+
+        entry_lo_pct = (entry_lo - current) / current * 100
+        entry_hi_pct = (entry_hi - current) / current * 100
+        sl_pct       = (sl       - current) / current * 100
+        target_pct   = (target   - current) / current * 100
+        rr = abs(target - current) / abs(current - sl) if abs(current - sl) > 1 else 0
+
+        lines.append("")
+        lines.append(f"  トレーディングプラン  → 判定: 【{verdict}】")
+        lines.append(f"    エントリーゾーン: {entry_lo:,.0f}〜{entry_hi:,.0f}円  ({entry_lo_pct:+.1f}%〜{entry_hi_pct:+.1f}%)")
+        lines.append(f"    ストップロス:     {sl:,.0f}円  ({sl_pct:+.1f}%)  ← ここを割ったら損切り")
+        lines.append(f"    目標値:           {target:,.0f}円  ({target_pct:+.1f}%)")
+        lines.append(f"    リスクリワード:   1 : {rr:.1f}  {'(良好)' if rr >= 2 else '(要注意)' if rr < 1 else ''}")
+
     # 予測をログに保存（的中率学習のため）
     try:
         from prediction_log import save_prediction
