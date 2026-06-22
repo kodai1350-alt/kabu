@@ -99,9 +99,18 @@ def cmd_list() -> None:
 # ------------------------------------------------------------------ #
 
 def _fetch_current_price(code: str) -> float | None:
-    """J-Quantsから直近終値を取得（technical.pyの内部ロジックを再利用）"""
+    """現在値を取得（yfinance優先、J-Quantsフォールバック）"""
+    # yfinance（無料・リアルタイム）
     try:
-        import time as _time
+        from market_data import get_current_price
+        price = get_current_price(code)
+        if price:
+            return price
+    except Exception:
+        pass
+
+    # J-Quants（フォールバック）
+    try:
         from technical import _get_headers, _fetch_ohlcv
         headers = _get_headers()
         if not headers:

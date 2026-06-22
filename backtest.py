@@ -263,7 +263,18 @@ def strategy(bar):
 # ------------------------------------------------------------------ #
 
 def _fetch_closes(code: str, days: int = 180) -> list[float]:
-    """J-Quantsから終値リストを取得"""
+    """終値リストを取得（yfinance優先、J-Quantsフォールバック）"""
+    # yfinance（無料・キー不要）
+    try:
+        from market_data import get_closes
+        period = "1y" if days >= 300 else ("6mo" if days >= 150 else "3mo")
+        closes = get_closes(code, period=period)
+        if closes:
+            return closes[-days:]
+    except Exception:
+        pass
+
+    # J-Quants（フォールバック）
     try:
         from technical import _get_headers, _fetch_ohlcv
         headers = _get_headers()
