@@ -90,37 +90,46 @@ def _macd(closes: list) -> tuple:
     return macd_vals[-1], _ema(macd_vals, 9)
 
 
+def _technical_from_closes(code: str, closes: list) -> str:
+    if len(closes) < 20:
+        return f"[{code}] データ不足（{len(closes)}日分）"
+    last = closes[-1]
+    rsi = _rsi(closes)
+    bb_upper, bb_mid, bb_lower = _bollinger(closes)
+    macd_line, signal = _macd(closes)
+    histogram = macd_line - signal
+    rsi_label = "買われすぎ⚠️" if rsi > 70 else "売られすぎ🔥" if rsi < 30 else "中立"
+    bb_label = "上限超え⚠️" if last > bb_upper else "下限付近🔥" if last < bb_lower else "バンド内"
+    macd_label = "ゴールデンクロス📈" if histogram > 0 else "デッドクロス📉"
+    return (
+        f"【{code} テクニカル】\n"
+        f"  現在値 : {last:,.0f}円\n"
+        f"  RSI(14): {rsi:.1f} → {rsi_label}\n"
+        f"  MACD  : {macd_line:+.2f} / Signal: {signal:+.2f} → {macd_label}\n"
+        f"  BB    : 上{bb_upper:,.0f} / 中{bb_mid:,.0f} / 下{bb_lower:,.0f} → {bb_label}"
+    )
+
+
 def technical_scan(code: str) -> str:
+    # yfinance（無料・リアルタイム・キー不要）
+    try:
+        from market_data import get_closes
+        closes = get_closes(code, period="3mo")
+        if closes and len(closes) >= 20:
+            return _technical_from_closes(code, closes)
+    except Exception:
+        pass
+
+    # J-Quants（フォールバック）
     headers = _get_headers()
     if headers is None:
-        return f"[J-Quants未設定] {code} のテクニカル分析をスキップ"
+        return f"[データ取得不可] {code} のテクニカル分析をスキップ"
 
     try:
         quotes = _fetch_ohlcv(code, headers)
         if not quotes:
             return f"[{code}] データなし"
-
-        # V2 レスポンスのカラム名: C=close, H=high, L=low, O=open, Vo=volume
         closes = [float(q["C"]) for q in quotes if q.get("C") is not None]
-        if len(closes) < 20:
-            return f"[{code}] データ不足（{len(closes)}日分）"
-
-        last = closes[-1]
-        rsi = _rsi(closes)
-        bb_upper, bb_mid, bb_lower = _bollinger(closes)
-        macd_line, signal = _macd(closes)
-        histogram = macd_line - signal
-
-        rsi_label = "買われすぎ⚠️" if rsi > 70 else "売られすぎ🔥" if rsi < 30 else "中立"
-        bb_label = "上限超え⚠️" if last > bb_upper else "下限付近🔥" if last < bb_lower else "バンド内"
-        macd_label = "ゴールデンクロス📈" if histogram > 0 else "デッドクロス📉"
-
-        return (
-            f"【{code} テクニカル】\n"
-            f"  現在値 : {last:,.0f}円\n"
-            f"  RSI(14): {rsi:.1f} → {rsi_label}\n"
-            f"  MACD  : {macd_line:+.2f} / Signal: {signal:+.2f} → {macd_label}\n"
-            f"  BB    : 上{bb_upper:,.0f} / 中{bb_mid:,.0f} / 下{bb_lower:,.0f} → {bb_label}"
-        )
+        return _technical_from_closes(code, closes)
     except Exception as e:
         return f"[{code}] テクニカル取得エラー: {e}"

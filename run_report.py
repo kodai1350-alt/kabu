@@ -10,6 +10,7 @@ from technical import technical_scan
 from edinet import scan_watchlist as edinet_scan
 from risk_manager import RiskManager
 from multi_agent import multi_agent_debate
+from market_data import format_macro_snapshot, format_stocks_snapshot, format_news_ddg
 
 load_dotenv()
 
@@ -83,6 +84,16 @@ def main():
     print(risk_status)
 
     print("Step 1: マクロ環境スキャン中...")
+    # yfinance（無料・リアルタイム）
+    market_snapshot = format_macro_snapshot()
+    stocks_snapshot = format_stocks_snapshot([s["code"] for s in WATCHLIST])
+    # DDG追加ニュース（Tavily補完、無料）
+    ddg_news = format_news_ddg([
+        "Nikkei 225 stock market today",
+        "Japan yen dollar exchange rate today",
+        "Federal Reserve interest rate policy",
+    ])
+    # Tavily（詳細検索）
     macro_data = macro_scan(tavily)
 
     print("Step 2: 監視銘柄スキャン中...")
@@ -116,7 +127,15 @@ def main():
 {risk_status}
 取引ステータス: {trading_flag}
 
-## マクロ環境データ
+## マーケットスナップショット（リアルタイム）
+{market_snapshot}
+
+{stocks_snapshot}
+
+## マクロニュース（DuckDuckGo）
+{ddg_news}
+
+## マクロ環境詳細（Tavily）
 {macro_data}
 
 ## 監視銘柄ニュース
