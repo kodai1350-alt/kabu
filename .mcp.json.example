@@ -20,6 +20,14 @@
       "headers": {
         "X-API-KEY": "xxxxxxxxxxxx"
       }
+    },
+    "webull": {
+      "command": "npx",
+      "args": ["-y", "@webull/mcp-server"],
+      "env": {
+        "WEBULL_API_KEY": "xxxxxxxxxxxx",
+        "WEBULL_SECRET": "xxxxxxxxxxxx"
+      }
     }
   }
 }
