@@ -271,6 +271,24 @@ def forecast_stock(
     signal = calc_signal_score(closes)
     sr = calc_support_resistance(closes)
 
+    # 出来高急増チェック（RSI<35 & 2倍以上 → スコア補正）
+    vol_ratio = None
+    vol_note = ""
+    try:
+        from market_data import get_volume_ratio
+        vol_ratio = get_volume_ratio(code)
+        rsi_now = signal.get("details", {}).get("rsi", (50, 0))[0]
+        if vol_ratio and vol_ratio >= 2.0 and rsi_now < 35:
+            signal["score"] = min(5, signal["score"] + 1)
+            signal["label"] = signal["label"].replace("売り", "買い候補(出来高急増)")
+            vol_note = f"出来高が平均の{vol_ratio:.1f}倍 × RSI売られすぎ → 反発シグナル強化"
+        elif vol_ratio and vol_ratio >= 2.0:
+            vol_note = f"出来高が平均の{vol_ratio:.1f}倍 → 何か動きあり（要注目）"
+        elif vol_ratio and vol_ratio >= 1.5:
+            vol_note = f"出来高がやや多め（平均の{vol_ratio:.1f}倍）"
+    except Exception:
+        pass
+
     slope = trend.get("slope", 0)
     r2 = trend.get("r2", 0)
     if abs(slope) < current * 0.001:
@@ -312,6 +330,8 @@ def forecast_stock(
     lines.append(f"  テクニカル判定: {signal['label']}")
     lines.append(f"    └ {rsi_comment}")
     lines.append(f"    └ {macd_comment} / {bb_comment}")
+    if vol_note:
+        lines.append(f"    └ {vol_note}")
     lines.append("")
     if sr:
         support    = sr["support"]

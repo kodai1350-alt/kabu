@@ -190,6 +190,104 @@ def _chg_label(chg: float) -> str:
     return "ほぼ横ばい"
 
 
+# ------------------------------------------------------------------ #
+# 出来高分析
+# ------------------------------------------------------------------ #
+
+def get_volume_ratio(code: str, avg_days: int = 20) -> Optional[float]:
+    """
+    当日出来高 ÷ 過去N日平均出来高 を返す。
+    2.0 なら「平均の2倍 = 出来高急増」
+    """
+    try:
+        import yfinance as yf
+        hist = yf.Ticker(f"{code}.T").history(period="2mo")
+        if hist.empty or len(hist) < avg_days + 1:
+            return None
+        avg = hist["Volume"].iloc[-(avg_days + 1):-1].mean()
+        today_vol = hist["Volume"].iloc[-1]
+        if avg and avg > 0:
+            return float(today_vol / avg)
+        return None
+    except Exception:
+        return None
+
+
+def scan_volume_signals(codes: list, rsi_threshold: float = 40,
+                         volume_threshold: float = 1.5) -> list[dict]:
+    """
+    RSI と出来高急増の組み合わせでシグナル銘柄をスキャンする。
+
+    Args:
+        codes: 銘柄コードリスト
+        rsi_threshold: RSI がこれ以下 → 売られすぎ候補
+        volume_threshold: 出来高比率がこれ以上 → 急増と判定
+
+    Returns:
+        [{code, name, price, chg, rsi, volume_ratio, signal}, ...]
+    """
+    from technical import _rsi
+    results = []
+    for code in codes:
+        try:
+            closes = get_closes(code, period="3mo")
+            if len(closes) < 30:
+                continue
+            rsi = _rsi(closes)
+            vol_ratio = get_volume_ratio(code)
+            price = closes[-1]
+            prev = closes[-2] if len(closes) >= 2 else price
+            chg = (price - prev) / prev if prev else 0
+
+            # シグナル判定
+            if rsi < rsi_threshold and vol_ratio and vol_ratio >= volume_threshold:
+                signal = "売られすぎ＋出来高急増 → 反発候補"
+            elif rsi > (100 - rsi_threshold) and vol_ratio and vol_ratio >= volume_threshold:
+                signal = "買われすぎ＋出来高急増 → 利食い注意"
+            elif vol_ratio and vol_ratio >= volume_threshold * 1.5:
+                signal = "出来高急増 → 何か動きあり"
+            else:
+                signal = None
+
+            if signal or (vol_ratio and vol_ratio >= volume_threshold):
+                results.append({
+                    "code": code,
+                    "name": WATCHLIST_CODES.get(code, code),
+                    "price": price,
+                    "chg": chg,
+                    "rsi": rsi,
+                    "volume_ratio": vol_ratio,
+                    "signal": signal,
+                })
+        except Exception:
+            continue
+    # 出来高比率が高い順に並べる
+    results.sort(key=lambda x: x.get("volume_ratio") or 0, reverse=True)
+    return results
+
+
+def format_volume_scan(codes: list) -> str:
+    """出来高スキャン結果を整形した文字列で返す"""
+    hits = scan_volume_signals(codes)
+    if not hits:
+        return "出来高急増シグナル: 該当なし（平常の出来高）"
+
+    lines = ["📊 出来高急増スキャン（平均比1.5倍以上）"]
+    lines.append("  " + "─" * 45)
+    for h in hits:
+        vol_str = f"出来高 平均の{h['volume_ratio']:.1f}倍" if h["volume_ratio"] else "出来高不明"
+        rsi_str = f"RSI {h['rsi']:.0f}"
+        chg_str = f"{h['chg']:+.1%}"
+        alert = f"  ⚡ {h['signal']}" if h["signal"] else ""
+        lines.append(
+            f"  {h['name']}({h['code']}):  "
+            f"{h['price']:,.0f}円 {chg_str}  {rsi_str}  {vol_str}"
+        )
+        if alert:
+            lines.append(alert)
+    return "\n".join(lines)
+
+
 def format_stocks_snapshot(codes: list) -> str:
     """監視銘柄の現在値を人間が読みやすい形式で返す"""
     try:
@@ -197,15 +295,21 @@ def format_stocks_snapshot(codes: list) -> str:
         tickers_str = " ".join(f"{c}.T" for c in codes)
         tickers = yf.Tickers(tickers_str)
         lines = ["📊 監視銘柄"]
-        lines.append("  " + "─" * 50)
+        lines.append("  " + "─" * 55)
         up_count = 0
         for code in codes:
             name = WATCHLIST_CODES.get(code, code)
-            short = name[:8]  # 表示幅調整
+            short = name[:8]
             try:
                 info = tickers.tickers[f"{code}.T"].fast_info
                 price = info.last_price
                 prev = info.previous_close
+                vol_ratio = get_volume_ratio(code)
+                vol_badge = ""
+                if vol_ratio and vol_ratio >= 3.0:
+                    vol_badge = f"  ⚡出来高{vol_ratio:.0f}倍!"
+                elif vol_ratio and vol_ratio >= 1.5:
+                    vol_badge = f"  出来高{vol_ratio:.1f}倍↑"
                 if price and prev:
                     chg = (price - prev) / prev
                     if chg > 0: up_count += 1
@@ -213,15 +317,15 @@ def format_stocks_snapshot(codes: list) -> str:
                     label = _chg_label(chg)
                     lines.append(
                         f"  {bar} {short}({code})  "
-                        f"{price:>7,.0f}円  {chg:+.1%}  {label}"
+                        f"{price:>7,.0f}円  {chg:+.1%}  {label}{vol_badge}"
                     )
                 elif price:
-                    lines.append(f"  ─ {short}({code})  {price:>7,.0f}円")
+                    lines.append(f"  ─ {short}({code})  {price:>7,.0f}円{vol_badge}")
                 else:
                     lines.append(f"  ? {short}({code})  取得不可")
             except Exception:
                 lines.append(f"  ? {short}({code})  取得不可")
-        lines.append("  " + "─" * 50)
+        lines.append("  " + "─" * 55)
         total = len(codes)
         lines.append(f"  上昇 {up_count}/{total}銘柄  下落 {total-up_count}/{total}銘柄")
         return "\n".join(lines)

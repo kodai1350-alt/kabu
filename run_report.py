@@ -10,7 +10,7 @@ from technical import technical_scan
 from edinet import scan_watchlist as edinet_scan
 from risk_manager import RiskManager
 from multi_agent import multi_agent_debate
-from market_data import format_macro_snapshot, format_stocks_snapshot, format_news_ddg
+from market_data import format_macro_snapshot, format_stocks_snapshot, format_news_ddg, format_volume_scan
 from forecast import forecast_stock
 
 load_dotenv()
@@ -97,6 +97,9 @@ def main():
     # Tavily（詳細検索）
     macro_data = macro_scan(tavily)
 
+    print("Step 1b: 出来高急増スキャン中...")
+    volume_scan = format_volume_scan([s["code"] for s in WATCHLIST])
+
     print("Step 2: 監視銘柄スキャン中...")
     company_data = ""
     for stock in WATCHLIST:
@@ -139,6 +142,9 @@ def main():
 {market_snapshot}
 
 {stocks_snapshot}
+
+## 出来高急増スキャン（RSI×出来高の組み合わせシグナル）
+{volume_scan}
 
 ## マクロニュース（DuckDuckGo）
 {ddg_news}
@@ -203,6 +209,11 @@ def main():
             market_snapshot,
             "",
             stocks_snapshot,
+            sep,
+            "",
+            "⚡ 出来高急増スキャン",
+            volume_scan,
+            "",
             sep,
             "",
             "📰 本日のニュース（要約）",
