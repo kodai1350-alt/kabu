@@ -9,6 +9,7 @@ from llm_client import chat
 from technical import technical_scan
 from edinet import scan_watchlist as edinet_scan
 from risk_manager import RiskManager
+from multi_agent import multi_agent_debate
 
 load_dotenv()
 
@@ -100,6 +101,13 @@ def main():
         technical_data += f"\n{result}\n"
         time.sleep(5)
 
+    print("Step 2d: マルチエージェント議論中...")
+    debate_data = ""
+    for stock in WATCHLIST[:2]:  # 上位2銘柄のみ（API呼び出し節約）
+        ctx = f"マクロ: {macro_data[:300]}\nニュース: {company_data[:300]}\nテクニカル: {technical_data[:300]}"
+        debate = multi_agent_debate(stock["code"], stock["name"], ctx)
+        debate_data += f"\n{debate}\n"
+
     print("Step 3: AI分析・レポート生成中...")
     trading_flag = "⛔ 本日は取引停止中" if not trading_ok else "✅ 取引可能"
     prompt = f"""あなたは日本株のAI投資アナリストです。以下のデータを分析してレポートを生成してください。
@@ -119,6 +127,9 @@ def main():
 
 ## テクニカル指標（RSI・MACD・ボリンジャーバンド）
 {technical_data}
+
+## マルチエージェント議論結果（Bull/Bear/Quant）
+{debate_data}
 
 ## 出力形式（必ずこの形式で）
 📊 AI予測取引レポート【{today}】
