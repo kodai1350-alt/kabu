@@ -222,8 +222,19 @@ def main() -> None:
     rm = RiskManager()
     report = build_close_report(rm)
     print(report)
+
+    # 予測精度分析（朝の予測と実績を比較）
+    print("\n予測精度分析中...")
+    try:
+        from prediction_analyzer import run_analysis
+        analysis = run_analysis()
+        full_report = report + "\n\n" + "─" * 30 + "\n" + analysis
+    except Exception as e:
+        full_report = report
+        print(f"  分析エラー: {e}")
+
     print("\nDiscord送信中...")
-    send_discord(report)
+    send_discord(full_report)
     print("完了。")
 
 

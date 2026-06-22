@@ -89,14 +89,22 @@ def calc_signal_score(closes: list) -> dict:
     from technical import _rsi, _bollinger, _macd
     if len(closes) < 30:
         return {"score": 0, "label": "データ不足", "details": {}}
+
+    # 学習済み重みを読み込む
+    try:
+        from prediction_analyzer import load_weights
+        w = load_weights()
+    except Exception:
+        w = {"rsi": 1.0, "macd": 1.0, "bb": 1.0, "trend": 1.0}
+
     rsi = _rsi(closes)
     bb_upper, bb_mid, bb_lower = _bollinger(closes)
     macd_line, sig_line = _macd(closes)
     trend = _linear_regression(closes)
-    s_rsi   = _rsi_signal(rsi)
-    s_macd  = _macd_signal(macd_line, sig_line)
-    s_bb    = _bb_signal(closes[-1], bb_upper, bb_mid, bb_lower)
-    s_trend = _trend_signal(trend.get("slope", 0), closes[-1])
+    s_rsi   = _rsi_signal(rsi)   * w.get("rsi", 1.0)
+    s_macd  = _macd_signal(macd_line, sig_line) * w.get("macd", 1.0)
+    s_bb    = _bb_signal(closes[-1], bb_upper, bb_mid, bb_lower) * w.get("bb", 1.0)
+    s_trend = _trend_signal(trend.get("slope", 0), closes[-1]) * w.get("trend", 1.0)
     total = s_rsi + s_macd + s_bb + s_trend
     score = max(-5, min(5, round(total * 5 / 8)))
     if score >= 3:   label = "強い買いシグナル 🔥"
@@ -280,9 +288,9 @@ def forecast_stock(
         macd_val, macd_s = det.get("macd", (0, 0))
         _, bb_s = det.get("bb", (0, 0))
         _, tr_s = det.get("trend", (0, 0))
-        lines.append(f"    RSI={rsi_val:.0f}({rsi_s:+d})  "
-                     f"MACD={macd_val:+.0f}({macd_s:+d})  "
-                     f"BB({bb_s:+d})  Trend({tr_s:+d})")
+        lines.append(f"    RSI={rsi_val:.0f}({int(rsi_s):+d})  "
+                     f"MACD={macd_val:+.0f}({int(macd_s):+d})  "
+                     f"BB({int(bb_s):+d})  Trend({int(tr_s):+d})")
     lines.append("")
     if sr:
         lines.append(f"  サポート: {sr['support']:,.0f}円  "
@@ -294,7 +302,43 @@ def forecast_stock(
     for ln in llm_pred.splitlines():
         lines.append(f"    {ln}")
 
+    # 予測をログに保存（的中率学習のため）
+    try:
+        from prediction_log import save_prediction
+        # シナリオ範囲をパース
+        scenario_bull, scenario_base, scenario_bear = _parse_scenarios(llm_pred, current)
+        save_prediction(
+            code=code, name=name, price=current,
+            signal_score=signal["score"],
+            trend_slope=trend.get("slope", 0),
+            pred_5d=trend.get("pred_5d", current),
+            scenario_bull=scenario_bull,
+            scenario_base=scenario_base,
+            scenario_bear=scenario_bear,
+            support=sr.get("support", current * 0.93),
+            resistance=sr.get("resistance", current * 1.07),
+        )
+    except Exception:
+        pass
+
     return "\n".join(lines)
+
+
+def _parse_scenarios(llm_text: str, current: float) -> tuple:
+    """LLMテキストからシナリオ価格帯を抽出（失敗時はルールベース値を返す）"""
+    import re
+    results = {}
+    for key in ["強気", "基本", "弱気"]:
+        pattern = rf"{key}シナリオ[：:]\s*([\d,]+)[〜～～-]([\d,]+)"
+        m = re.search(pattern, llm_text)
+        if m:
+            lo = float(m.group(1).replace(",", ""))
+            hi = float(m.group(2).replace(",", ""))
+            results[key] = [lo, hi]
+    bull = results.get("強気", [current * 1.02, current * 1.05])
+    base = results.get("基本", [current * 0.99, current * 1.02])
+    bear = results.get("弱気", [current * 0.95, current * 0.99])
+    return bull, base, bear
 
 
 if __name__ == "__main__":
