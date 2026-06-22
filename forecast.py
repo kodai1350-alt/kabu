@@ -271,6 +271,24 @@ def forecast_stock(
     signal = calc_signal_score(closes)
     sr = calc_support_resistance(closes)
 
+    # 出来高急増チェック（RSI<35 & 2倍以上 → スコア補正）
+    vol_ratio = None
+    vol_note = ""
+    try:
+        from market_data import get_volume_ratio
+        vol_ratio = get_volume_ratio(code)
+        rsi_now = signal.get("details", {}).get("rsi", (50, 0))[0]
+        if vol_ratio and vol_ratio >= 2.0 and rsi_now < 35:
+            signal["score"] = min(5, signal["score"] + 1)
+            signal["label"] = signal["label"].replace("売り", "買い候補(出来高急増)")
+            vol_note = f"出来高が平均の{vol_ratio:.1f}倍 × RSI売られすぎ → 反発シグナル強化"
+        elif vol_ratio and vol_ratio >= 2.0:
+            vol_note = f"出来高が平均の{vol_ratio:.1f}倍 → 何か動きあり（要注目）"
+        elif vol_ratio and vol_ratio >= 1.5:
+            vol_note = f"出来高がやや多め（平均の{vol_ratio:.1f}倍）"
+    except Exception:
+        pass
+
     slope = trend.get("slope", 0)
     r2 = trend.get("r2", 0)
     if abs(slope) < current * 0.001:
@@ -312,6 +330,8 @@ def forecast_stock(
     lines.append(f"  テクニカル判定: {signal['label']}")
     lines.append(f"    └ {rsi_comment}")
     lines.append(f"    └ {macd_comment} / {bb_comment}")
+    if vol_note:
+        lines.append(f"    └ {vol_note}")
     lines.append("")
     if sr:
         support    = sr["support"]
@@ -350,6 +370,49 @@ def forecast_stock(
                 lines.append(f"    {ln.strip()}")
         else:
             lines.append(f"    {ln.strip()}")
+
+    # ── トレーディングプラン（Prompt #7スタイル）──────────────────
+    score = signal["score"]
+    if sr:
+        support    = sr["support"]
+        resistance = sr["resistance"]
+
+        # サポート・レジスタンスを「現在値に近い方」に限定
+        near_sup = support if support >= current * 0.90 else current * 0.93
+        near_res = resistance if resistance <= current * 1.15 else current * 1.07
+
+        # 買い判断（Prompt #2スタイル）
+        if score >= 2:
+            verdict = "今買う"
+            entry_lo = current * 0.995
+            entry_hi = current * 1.005
+            sl       = near_sup * 0.99
+            target   = near_res * 0.99
+        elif score >= 0:
+            verdict = "もう少し待つ"
+            entry_lo = current * 0.97
+            entry_hi = current * 0.99
+            sl       = near_sup * 0.98
+            target   = near_res * 0.99
+        else:
+            verdict = "見送り"
+            entry_lo = current * 0.92
+            entry_hi = current * 0.95
+            sl       = current * 0.90
+            target   = current * 1.03
+
+        entry_lo_pct = (entry_lo - current) / current * 100
+        entry_hi_pct = (entry_hi - current) / current * 100
+        sl_pct       = (sl       - current) / current * 100
+        target_pct   = (target   - current) / current * 100
+        rr = abs(target - current) / abs(current - sl) if abs(current - sl) > 1 else 0
+
+        lines.append("")
+        lines.append(f"  トレーディングプラン  → 判定: 【{verdict}】")
+        lines.append(f"    エントリーゾーン: {entry_lo:,.0f}〜{entry_hi:,.0f}円  ({entry_lo_pct:+.1f}%〜{entry_hi_pct:+.1f}%)")
+        lines.append(f"    ストップロス:     {sl:,.0f}円  ({sl_pct:+.1f}%)  ← ここを割ったら損切り")
+        lines.append(f"    目標値:           {target:,.0f}円  ({target_pct:+.1f}%)")
+        lines.append(f"    リスクリワード:   1 : {rr:.1f}  {'(良好)' if rr >= 2 else '(要注意)' if rr < 1 else ''}")
 
     # 予測をログに保存（的中率学習のため）
     try:

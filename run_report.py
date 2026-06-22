@@ -10,7 +10,8 @@ from technical import technical_scan
 from edinet import scan_watchlist as edinet_scan
 from risk_manager import RiskManager
 from multi_agent import multi_agent_debate
-from market_data import format_macro_snapshot, format_stocks_snapshot, format_news_ddg
+from market_data import format_macro_snapshot, format_stocks_snapshot, format_news_ddg, format_volume_scan
+from api_tracker import check_and_warn, record, get_status_report
 from forecast import forecast_stock
 
 load_dotenv()
@@ -84,24 +85,40 @@ def main():
     trading_ok = rm.check_before_order("_", ACCOUNT_BALANCE * 0.1, ACCOUNT_BALANCE)[0]
     print(risk_status)
 
+    discord_url = os.getenv("DISCORD_WEBHOOK_URL", "")
+
     print("Step 1: マクロ環境スキャン中...")
-    # yfinance（無料・リアルタイム）
+    # yfinance / DDG は無制限（常時実行）
     market_snapshot = format_macro_snapshot()
     stocks_snapshot = format_stocks_snapshot([s["code"] for s in WATCHLIST])
-    # DDG追加ニュース（Tavily補完、無料）
     ddg_news = format_news_ddg([
         "Nikkei 225 stock market today",
         "Japan yen dollar exchange rate today",
         "Federal Reserve interest rate policy",
     ])
-    # Tavily（詳細検索）
-    macro_data = macro_scan(tavily)
+
+    # Tavily — 残量チェック
+    if check_and_warn("tavily", discord_url):
+        macro_data = macro_scan(tavily)
+        record("tavily", 3)
+    else:
+        print("  [Tavily STOP] DDGで代替")
+        macro_data = ddg_news  # DDGで代替
+
+    print("Step 1b: 出来高急増スキャン中...")
+    volume_scan = format_volume_scan([s["code"] for s in WATCHLIST])
 
     print("Step 2: 監視銘柄スキャン中...")
     company_data = ""
-    for stock in WATCHLIST:
-        news = company_scan(exa, stock)
-        company_data += f"\n【{stock['name']}({stock['code']})】\n{news}\n"
+    # Exa — 残量チェック
+    if check_and_warn("exa", discord_url):
+        for stock in WATCHLIST:
+            news = company_scan(exa, stock)
+            company_data += f"\n【{stock['name']}({stock['code']})】\n{news}\n"
+        record("exa", len(WATCHLIST))
+    else:
+        print("  [Exa STOP] 銘柄ニューススキャンをスキップ")
+        company_data = "（Exa無料枠消化のためスキップ）"
 
     print("Step 2b: 適時開示スキャン中（EDINET）...")
     edinet_data = edinet_scan(WATCHLIST)
@@ -122,10 +139,15 @@ def main():
 
     print("Step 2e: マルチエージェント議論中...")
     debate_data = ""
-    for stock in WATCHLIST[:2]:  # 上位2銘柄のみ（API呼び出し節約）
-        ctx = f"マクロ: {macro_data[:300]}\nニュース: {company_data[:300]}\nテクニカル: {technical_data[:300]}"
-        debate = multi_agent_debate(stock["code"], stock["name"], ctx)
-        debate_data += f"\n{debate}\n"
+    if check_and_warn("groq", discord_url):
+        for stock in WATCHLIST[:2]:
+            ctx = f"マクロ: {macro_data[:300]}\nニュース: {company_data[:300]}\nテクニカル: {technical_data[:300]}"
+            debate = multi_agent_debate(stock["code"], stock["name"], ctx)
+            debate_data += f"\n{debate}\n"
+        record("groq", len(WATCHLIST[:2]) * 3)  # 3エージェント×銘柄数
+    else:
+        print("  [Groq STOP] マルチエージェント議論をスキップ")
+        debate_data = "（Groq無料枠消化のためスキップ）"
 
     print("Step 3: AI分析・レポート生成中...")
     trading_flag = "⛔ 本日は取引停止中" if not trading_ok else "✅ 取引可能"
@@ -139,6 +161,9 @@ def main():
 {market_snapshot}
 
 {stocks_snapshot}
+
+## 出来高急増スキャン（RSI×出来高の組み合わせシグナル）
+{volume_scan}
 
 ## マクロニュース（DuckDuckGo）
 {ddg_news}
@@ -186,10 +211,14 @@ def main():
 📈 今後1週間の見通し（2〜3文）
 """
     report = None
-    try:
-        report = chat(prompt, provider="groq")
-    except Exception as e:
-        print(f"  [Groq失敗: {e}] ルールベースレポートに切り替え")
+    if check_and_warn("groq", discord_url):
+        try:
+            report = chat(prompt, provider="groq")
+            record("groq", 1)
+        except Exception as e:
+            print(f"  [Groq失敗: {e}] ルールベースレポートに切り替え")
+    else:
+        print("  [Groq STOP] ルールベースレポートに切り替え")
 
     if not report:
         sep = "─" * 35
@@ -203,6 +232,11 @@ def main():
             market_snapshot,
             "",
             stocks_snapshot,
+            sep,
+            "",
+            "⚡ 出来高急増スキャン",
+            volume_scan,
+            "",
             sep,
             "",
             "📰 本日のニュース（要約）",
@@ -227,6 +261,10 @@ def main():
     # リスクブロックをレポート末尾に追加
     risk_block = _build_risk_block(rm)
     full_message = f"{report}\n\n---\n🛡 リスク管理ステータス\n{risk_block}"
+
+    # API残量メーターをレポート末尾に追加
+    api_status = get_status_report()
+    full_message += f"\n\n{api_status}"
 
     print("Step 4: Discord送信中...")
     send_discord(full_message)

@@ -10,3 +10,4 @@ risk_state.json
 holdings.json
 prediction_log.json
 signal_weights.json
+api_usage.json

@@ -172,6 +172,55 @@ def build_close_report(rm: RiskManager) -> str:
             lines.append(f"  予測エラー: {e}")
         lines.append("")
 
+    # ── 保有銘柄の出口戦略（Prompt #3スタイル）──────────────
+    if positions:
+        lines.append("📤 出口戦略（保有銘柄）")
+        for p in positions:
+            current = _fetch_current_price(p["code"])
+            if not current:
+                continue
+            cost    = p["entry_price"]
+            shares  = p["shares"]
+            pnl_pct = (current - cost) / cost
+            pnl_yen = (current - cost) * shares
+
+            # 3つの出口戦略をルールベースで生成
+            # 保守的: 現在値付近で一部利食い or SL遵守
+            # バランス: 半分利食い + 残りはトレーリング
+            # 積極的: 目標値まで全保有
+            if pnl_pct >= 0.05:
+                # 含み益あり
+                partial_sell = current * 0.995
+                trail_sl     = cost + (current - cost) * 0.5  # 利益の半分を守るSL
+                target       = current * 1.05
+
+                lines.append(f"\n  {p['name']}({p['code']})  "
+                             f"取得{cost:,.0f}円 → 現在{current:,.0f}円  "
+                             f"含み益 {pnl_pct:+.1%} ({pnl_yen:+,.0f}円)")
+                lines.append(f"    保守的: 今すぐ全売り → 利益確定 ({pnl_yen:+,.0f}円)")
+                lines.append(f"    バランス: 半分売り({partial_sell:,.0f}円)、残りSL={trail_sl:,.0f}円に引き上げ")
+                lines.append(f"    積極的:  目標{target:,.0f}円(+{(target-cost)/cost:.0%})まで全保有")
+
+            elif pnl_pct <= -0.05:
+                # 含み損あり
+                sl_line  = cost * 0.95  # -5%ライン
+                avg_down = cost * 0.97  # ナンピン候補
+                target   = cost * 1.02
+
+                lines.append(f"\n  {p['name']}({p['code']})  "
+                             f"取得{cost:,.0f}円 → 現在{current:,.0f}円  "
+                             f"含み損 {pnl_pct:+.1%} ({pnl_yen:+,.0f}円)")
+                lines.append(f"    保守的: 今すぐ損切り → 損失確定 ({pnl_yen:+,.0f}円) ※規律優先")
+                lines.append(f"    バランス: {sl_line:,.0f}円({-0.05:.0%})をSLに設定して様子見")
+                lines.append(f"    積極的:  {avg_down:,.0f}円付近で追加購入(ナンピン)して平均コスト下げ")
+
+            else:
+                lines.append(f"\n  {p['name']}({p['code']})  "
+                             f"取得{cost:,.0f}円 → 現在{current:,.0f}円  "
+                             f"ほぼ横ばい ({pnl_pct:+.1%})")
+                lines.append(f"    → 損切りライン: {cost*0.95:,.0f}円(-5%)  目標: {cost*1.07:,.0f}円(+7%)")
+        lines.append("")
+
     # ── 翌日の準備 ───────────────────────────────────────────
     next_ok, next_reason = rm.check_before_order("_", ACCOUNT_BALANCE * 0.15, ACCOUNT_BALANCE)
     lines.append("🗓 明日の取引可否")
