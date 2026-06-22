@@ -218,7 +218,51 @@ def main() -> None:
         cmd_list()
         return
 
-    # 通常実行: 終了レポート生成＆Discord送信
+    # 前場終了モード（11:30）: 軽量版・予測分析なし
+    if args and args[0] == "morning-close":
+        rm = RiskManager()
+        now = datetime.datetime.now().strftime("%H:%M")
+        today = datetime.date.today().strftime("%Y/%m/%d")
+        lines = [f"📊 前場終了レポート【{today} {now}】", ""]
+        try:
+            from market_data import format_macro_snapshot, format_stocks_snapshot
+            lines.append(format_macro_snapshot())
+            lines.append("")
+            lines.append(format_stocks_snapshot(
+                [s["code"] for s in [
+                    {"code": "7203"}, {"code": "6758"}, {"code": "9984"},
+                    {"code": "4063"}, {"code": "8035"}, {"code": "6857"},
+                ]]
+            ))
+            lines.append("")
+        except Exception as e:
+            lines.append(f"[市場データ取得エラー: {e}]")
+        # SLチェックのみ（分析なし）
+        positions = load_holdings()
+        if positions:
+            lines.append("📂 保有ポジション SLチェック（前場終値）")
+            for p in positions:
+                current = _fetch_current_price(p["code"])
+                if current is None:
+                    lines.append(f"  - {p['name']}({p['code']}): 取得不可")
+                    continue
+                sl_hit, sl_msg = rm.check_stop_loss(p["code"], p["entry_price"], current)
+                pnl_pct = (current - p["entry_price"]) / p["entry_price"]
+                icon = "SL!" if sl_hit else ("+" if pnl_pct >= 0 else "-")
+                lines.append(f"  [{icon}] {p['name']}: {p['entry_price']:,.0f}->{current:,.0f}円 "
+                             f"{pnl_pct:+.2%}  {sl_msg}")
+                if sl_hit:
+                    lines.append(f"     ⚠️ ストップロス推奨！午後の判断を検討")
+        lines.append("")
+        lines.append("⏰ 昼レポートは12:00 | 後場終了レポートは15:30に届きます")
+        report = "\n".join(lines)
+        print(report)
+        print("\nDiscord送信中...")
+        send_discord(report)
+        print("完了。")
+        return
+
+    # 通常実行（15:30）: 終了レポート生成＆Discord送信
     rm = RiskManager()
     report = build_close_report(rm)
     print(report)
