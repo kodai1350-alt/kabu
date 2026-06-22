@@ -159,6 +159,19 @@ def build_close_report(rm: RiskManager) -> str:
 
     lines.append("")
 
+    # ── 保有銘柄の未来予測 ───────────────────────────────────
+    if positions:
+        lines.append("🔮 保有銘柄 予測")
+        try:
+            from forecast import forecast_stock
+            for p in positions:
+                fc = forecast_stock(p["code"], p["name"])
+                lines.append(fc)
+                lines.append("")
+        except Exception as e:
+            lines.append(f"  予測エラー: {e}")
+        lines.append("")
+
     # ── 翌日の準備 ───────────────────────────────────────────
     next_ok, next_reason = rm.check_before_order("_", ACCOUNT_BALANCE * 0.15, ACCOUNT_BALANCE)
     lines.append("🗓 明日の取引可否")

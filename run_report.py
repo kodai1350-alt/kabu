@@ -11,6 +11,7 @@ from edinet import scan_watchlist as edinet_scan
 from risk_manager import RiskManager
 from multi_agent import multi_agent_debate
 from market_data import format_macro_snapshot, format_stocks_snapshot, format_news_ddg
+from forecast import forecast_stock
 
 load_dotenv()
 
@@ -112,7 +113,14 @@ def main():
         technical_data += f"\n{result}\n"
         time.sleep(5)
 
-    print("Step 2d: マルチエージェント議論中...")
+    print("Step 2d: 未来予測中...")
+    forecast_data = ""
+    for stock in WATCHLIST:
+        fc = forecast_stock(stock["code"], stock["name"])
+        forecast_data += f"\n{fc}\n"
+        time.sleep(1)
+
+    print("Step 2e: マルチエージェント議論中...")
     debate_data = ""
     for stock in WATCHLIST[:2]:  # 上位2銘柄のみ（API呼び出し節約）
         ctx = f"マクロ: {macro_data[:300]}\nニュース: {company_data[:300]}\nテクニカル: {technical_data[:300]}"
@@ -146,6 +154,9 @@ def main():
 
 ## テクニカル指標（RSI・MACD・ボリンジャーバンド）
 {technical_data}
+
+## 未来予測（トレンド回帰・シグナルスコア・S/Rライン・AIシナリオ）
+{forecast_data}
 
 ## マルチエージェント議論結果（Bull/Bear/Quant）
 {debate_data}
