@@ -8,3 +8,5 @@ requests>=2.31.0
 schedule>=1.2.0
 python-dotenv>=1.0.0
 pytest>=8.0.0
+vibe-trading-ai>=0.1.0
+# tradingagents は pandas>=3.0.1 が必要 → jquants-api-client と競合するため別環境で使用
