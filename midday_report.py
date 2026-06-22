@@ -45,26 +45,41 @@ def build_midday_report() -> str:
     # 朝の予測と比較
     morning_preds = get_today_predictions()
     if morning_preds:
-        lines.append("📊 朝予測 vs 前場実績")
+        lines.append("📊 朝の予測 vs 前場の実際の動き")
         from market_data import get_current_price
+        hit = 0
+        total_p = 0
+        rows = []
         for p in morning_preds:
             current = get_current_price(p["code"])
             if not current:
                 continue
+            total_p += 1
             pred_price = p.get("price", current)
-            change = current - pred_price
-            change_pct = change / pred_price * 100 if pred_price else 0
-            pred_5d = p.get("pred_5d", 0)
+            change_pct = (current - pred_price) / pred_price * 100 if pred_price else 0
             score = p.get("signal_score", 0)
+            slope = p.get("trend_slope", 0)
 
-            # 朝のシグナルスコアと実際の方向が一致しているか
-            direction_match = (change >= 0) == (p.get("trend_slope", 0) >= 0)
-            icon = "OK" if direction_match else "NG"
-            lines.append(
-                f"  [{icon}] {p['name']}({p['code']}): "
-                f"朝{pred_price:,.0f}->今{current:,.0f}円 ({change_pct:+.1f}%)  "
-                f"スコア{score:+d}"
+            # 朝の予測方向（スコア/傾き）と実際の方向が一致しているか
+            pred_up = (score > 0) or (score == 0 and slope > 0)
+            actual_up = change_pct > 0.05
+            actual_down = change_pct < -0.05
+            if actual_up == pred_up or (not actual_up and not actual_down):
+                match = True
+                hit += 1
+            else:
+                match = False
+
+            pred_dir = "上昇予測" if pred_up else "下落予測"
+            actual_dir = "上昇" if actual_up else ("下落" if actual_down else "横ばい")
+            result_icon = "的中" if match else "外れ"
+            rows.append(
+                f"  {'✅' if match else '❌'} {p['name']}({p['code']}):  "
+                f"朝={pred_dir} → 実際={actual_dir}({change_pct:+.1f}%)  [{result_icon}]"
             )
+        lines.extend(rows)
+        if total_p > 0:
+            lines.append(f"  → 的中率: {hit}/{total_p}銘柄 ({hit/total_p*100:.0f}%)")
         lines.append("")
 
     # ── DDGニュース（前場中の動き）───────────────────────────

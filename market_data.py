@@ -67,52 +67,163 @@ def get_macro_snapshot() -> dict:
         return {}
 
 
+def _vix_label(v: float) -> str:
+    if v < 15:   return "極めて低リスク / 強気相場"
+    if v < 20:   return "低リスク / 平常運転"
+    if v < 30:   return "警戒ゾーン / ボラ上昇"
+    return "高リスク / パニック売り"
+
+def _usdjpy_label(v: float) -> str:
+    if v > 155: return f"強い円安 → 輸出株に追い風"
+    if v > 145: return f"円安 → 輸出株やや有利"
+    if v > 135: return f"中立"
+    return f"円高 → 輸出株に逆風"
+
+def _yield_label(v: float) -> str:
+    if v > 4.5:  return "高水準 → 成長株に逆風"
+    if v > 3.5:  return "やや高め → 様子見"
+    return "低め → 株式に追い風"
+
+
 def format_macro_snapshot() -> str:
-    """マクロスナップショットを整形した文字列で返す"""
-    snap = get_macro_snapshot()
-    if not snap:
+    """マクロスナップショットを人間が読みやすい形式で返す"""
+    import yfinance as yf
+    import datetime
+    try:
+        tickers_obj = yf.Tickers(" ".join(MACRO_TICKERS.keys()))
+    except Exception:
         return "マクロデータ取得不可"
 
-    lines = ["📈 マーケットスナップショット"]
-    for name, price in snap.items():
-        if "VIX" in name:
-            icon = "😱" if price > 30 else ("⚠️" if price > 20 else "😊")
-            lines.append(f"  {icon} {name}: {price:.2f}")
-        elif "USD/JPY" in name:
-            icon = "📉" if price < 145 else ("📈" if price > 155 else "➡️")
-            lines.append(f"  {icon} {name}: {price:.2f}円")
-        elif "利回り" in name:
-            lines.append(f"  📊 {name}: {price:.2f}%")
-        elif "S&P" in name or "Nasdaq" in name or "日経" in name:
-            lines.append(f"  📊 {name}: {price:,.2f}")
-        else:
-            lines.append(f"  📊 {name}: {price:.2f}")
+    data = {}
+    for symbol, name in MACRO_TICKERS.items():
+        try:
+            info = tickers_obj.tickers[symbol].fast_info
+            price = float(info.last_price) if info.last_price else None
+            prev  = float(info.previous_close) if info.previous_close else None
+            if price:
+                data[name] = {"price": price, "prev": prev}
+        except Exception:
+            pass
+
+    if not data:
+        return "マクロデータ取得不可"
+
+    def chg_str(d):
+        p, prev = d["price"], d["prev"]
+        if prev and prev > 0:
+            c = (p - prev) / prev * 100
+            arrow = "↑" if c > 0 else ("↓" if c < 0 else "→")
+            return f"{arrow}{abs(c):.1f}%"
+        return ""
+
+    now = datetime.datetime.now().strftime("%H:%M")
+    lines = [f"🌍 グローバル市場スナップショット（{now}現在）", ""]
+
+    # ── 米国 ──
+    lines.append("  【米国】")
+    for key in ["S&P500", "Nasdaq"]:
+        if key in data:
+            d = data[key]
+            c = chg_str(d)
+            lines.append(f"    {key}: {d['price']:,.0f}  {c}")
+    if "VIX恐怖指数" in data:
+        v = data["VIX恐怖指数"]["price"]
+        lines.append(f"    VIX: {v:.1f}  → {_vix_label(v)}")
+    if "米10年債利回り" in data:
+        v = data["米10年債利回り"]["price"]
+        lines.append(f"    米10年債: {v:.2f}%  → {_yield_label(v)}")
+
+    # ── 為替 ──
+    lines.append("")
+    lines.append("  【為替・商品】")
+    if "USD/JPY" in data:
+        v = data["USD/JPY"]["price"]
+        c = chg_str(data["USD/JPY"])
+        lines.append(f"    USD/JPY: {v:.1f}円  {c}  → {_usdjpy_label(v)}")
+    for key in ["金先物", "WTI原油"]:
+        if key in data:
+            d = data[key]
+            c = chg_str(d)
+            lines.append(f"    {key}: {d['price']:,.0f}  {c}")
+
+    # ── 日本 ──
+    lines.append("")
+    lines.append("  【日本】")
+    if "日経225" in data:
+        d = data["日経225"]
+        c = chg_str(d)
+        risk_on = (d["prev"] and d["price"] > d["prev"])
+        mood = "上昇中" if risk_on else "下落中"
+        lines.append(f"    日経225: {d['price']:,.0f}  {c}  → {mood}")
+
+    # ── 総合判定 ──
+    score = 0
+    if "VIX恐怖指数" in data:
+        v = data["VIX恐怖指数"]["price"]
+        score += 2 if v < 15 else (1 if v < 20 else (-1 if v > 25 else 0))
+    if "S&P500" in data:
+        d = data["S&P500"]
+        if d["prev"] and d["price"] > d["prev"]: score += 1
+    if "USD/JPY" in data:
+        score += 1 if data["USD/JPY"]["price"] > 145 else 0
+    if "米10年債利回り" in data:
+        v = data["米10年債利回り"]["price"]
+        score -= 1 if v > 4.5 else 0
+
+    if score >= 3:   mood_overall = "リスクオン 強気"
+    elif score >= 1: mood_overall = "やや強気"
+    elif score >= -1: mood_overall = "中立 / 様子見"
+    else:            mood_overall = "リスクオフ 警戒"
+    lines.append("")
+    lines.append(f"  市場環境: {mood_overall}（スコア {score:+d}）")
+
     return "\n".join(lines)
 
 
+def _chg_label(chg: float) -> str:
+    if chg > 0.03:  return "大幅高"
+    if chg > 0.01:  return "上昇"
+    if chg > 0.002: return "小幅高"
+    if chg < -0.03: return "大幅安"
+    if chg < -0.01: return "下落"
+    if chg < -0.002: return "小幅安"
+    return "ほぼ横ばい"
+
+
 def format_stocks_snapshot(codes: list) -> str:
-    """監視銘柄の現在値一覧を返す"""
+    """監視銘柄の現在値を人間が読みやすい形式で返す"""
     try:
         import yfinance as yf
         tickers_str = " ".join(f"{c}.T" for c in codes)
         tickers = yf.Tickers(tickers_str)
-        lines = ["📊 監視銘柄 現在値"]
+        lines = ["📊 監視銘柄"]
+        lines.append("  " + "─" * 50)
+        up_count = 0
         for code in codes:
             name = WATCHLIST_CODES.get(code, code)
+            short = name[:8]  # 表示幅調整
             try:
                 info = tickers.tickers[f"{code}.T"].fast_info
                 price = info.last_price
                 prev = info.previous_close
                 if price and prev:
                     chg = (price - prev) / prev
-                    icon = "📈" if chg > 0 else ("📉" if chg < 0 else "➡️")
-                    lines.append(f"  {icon} {name}({code}): {price:,.0f}円  {chg:+.2%}")
+                    if chg > 0: up_count += 1
+                    bar = "▲" if chg > 0 else ("▼" if chg < 0 else "─")
+                    label = _chg_label(chg)
+                    lines.append(
+                        f"  {bar} {short}({code})  "
+                        f"{price:>7,.0f}円  {chg:+.1%}  {label}"
+                    )
                 elif price:
-                    lines.append(f"  ➡️ {name}({code}): {price:,.0f}円")
+                    lines.append(f"  ─ {short}({code})  {price:>7,.0f}円")
                 else:
-                    lines.append(f"  ⚪ {name}({code}): 取得不可")
+                    lines.append(f"  ? {short}({code})  取得不可")
             except Exception:
-                lines.append(f"  ⚪ {name}({code}): 取得不可")
+                lines.append(f"  ? {short}({code})  取得不可")
+        lines.append("  " + "─" * 50)
+        total = len(codes)
+        lines.append(f"  上昇 {up_count}/{total}銘柄  下落 {total-up_count}/{total}銘柄")
         return "\n".join(lines)
     except Exception as e:
         return f"銘柄データ取得エラー: {e}"

@@ -173,24 +173,28 @@ def _rule_based_forecast(current: float, signal: dict, trend: dict, sr: dict) ->
     weekly_move = abs(slope) * 5 + current * 0.02
     bias = score * current * 0.005
 
+    buffer = current * 0.005  # 最低0.5%幅を保証
     base_lo = max(support, pred5 - weekly_move * 0.5 + bias)
     base_hi = min(resistance, pred5 + weekly_move * 0.5 + bias)
+    if base_hi <= base_lo: base_hi = base_lo + buffer * 2
     bull_lo = base_hi
-    bull_hi = min(resistance, base_hi + weekly_move * 0.4 + abs(bias))
-    bear_lo = max(support, base_lo - weekly_move * 0.4 - abs(bias))
+    bull_hi = max(bull_lo + buffer, min(resistance, base_hi + weekly_move * 0.4 + abs(bias)))
     bear_hi = base_lo
+    bear_lo = min(bear_hi - buffer, max(support * 0.99, base_lo - weekly_move * 0.4 - abs(bias)))
 
     if score >= 2:   p_bull, p_base, p_bear = 40, 45, 15
     elif score <= -2: p_bull, p_base, p_bear = 15, 45, 40
     else:            p_bull, p_base, p_bear = 25, 50, 25
 
     confidence = min(5, max(1, 3 + round(r2 * 2)))
+    trend_word = f"{'上昇' if slope > 0 else '下落'}中（{slope:+.0f}円/日）"
+    signal_word = "買い" if score > 0 else ("売り" if score < 0 else "中立")
     return (
         f"強気シナリオ: {bull_lo:,.0f}〜{bull_hi:,.0f}円（確率{p_bull}%）\n"
         f"基本シナリオ: {base_lo:,.0f}〜{base_hi:,.0f}円（確率{p_base}%）\n"
         f"弱気シナリオ: {bear_lo:,.0f}〜{bear_hi:,.0f}円（確率{p_bear}%）\n"
         f"確信度: {confidence}/5\n"
-        f"根拠: トレンド{slope:+.0f}円/日・スコア{score:+d}・S={support:,.0f}/R={resistance:,.0f}"
+        f"根拠: トレンド{trend_word}・{signal_word}シグナル・下値目処{support:,.0f}円"
     )
 
 
@@ -276,31 +280,76 @@ def forecast_stock(
     else:
         trend_label = f"{'強い' if r2 > 0.6 else ''}下降トレンド 📉"
 
-    lines = [f"🔮 未来予測【{name}({code})】", ""]
-    lines.append(f"  トレンド: {trend_label}���30日回帰 {slope:+.1f}円/日, R²={r2:.2f}）")
-    lines.append(f"  5日後予測: {trend.get('pred_5d', 0):,.0f}円  "
-                 f"10日後: {trend.get('pred_10d', 0):,.0f}円")
-    lines.append("")
-    lines.append(f"  シグナルスコア: {signal['score']:+d}/5  {signal['label']}")
+    pred5  = trend.get("pred_5d", current)
+    pred10 = trend.get("pred_10d", current)
+    chg5   = (pred5  - current) / current * 100
+    chg10  = (pred10 - current) / current * 100
+
+    # テクニカル指標を平易な言葉に変換
     det = signal.get("details", {})
-    if det:
-        rsi_val, rsi_s = det.get("rsi", (50, 0))
-        macd_val, macd_s = det.get("macd", (0, 0))
-        _, bb_s = det.get("bb", (0, 0))
-        _, tr_s = det.get("trend", (0, 0))
-        lines.append(f"    RSI={rsi_val:.0f}({int(rsi_s):+d})  "
-                     f"MACD={macd_val:+.0f}({int(macd_s):+d})  "
-                     f"BB({int(bb_s):+d})  Trend({int(tr_s):+d})")
+    rsi_val = det.get("rsi", (50, 0))[0]
+    if rsi_val > 70:   rsi_comment = f"RSI {rsi_val:.0f} → 買われすぎ注意"
+    elif rsi_val < 30: rsi_comment = f"RSI {rsi_val:.0f} → 売られすぎ（反発期待）"
+    elif rsi_val > 60: rsi_comment = f"RSI {rsi_val:.0f} → やや過熱"
+    elif rsi_val < 40: rsi_comment = f"RSI {rsi_val:.0f} → 割安圏"
+    else:              rsi_comment = f"RSI {rsi_val:.0f} → 中立ゾーン"
+
+    bb_s = det.get("bb", (0, 0))[1]
+    if bb_s >= 2:   bb_comment = "価格が下限付近 → 反発しやすい"
+    elif bb_s <= -2: bb_comment = "価格が上限付近 → 利食いに注意"
+    else:            bb_comment = "価格がバンド中央付近"
+
+    macd_s = det.get("macd", (0, 0))[1]
+    tr_s   = det.get("trend", (0, 0))[1]
+    macd_comment = "上昇モメンタム" if macd_s > 0 else "下降モメンタム"
+    trend_comment = f"直近30日: {slope:+.0f}円/日ペースで{'上昇中' if slope > 0 else '下落中'}"
+
+    lines = [f"🔮 来週の予測【{name}（{code}）】", ""]
+    lines.append(f"  現在値: {current:,.0f}円")
+    lines.append(f"  トレンド方向: {trend_label}")
+    lines.append(f"    └ {trend_comment}")
+    lines.append("")
+    lines.append(f"  テクニカル判定: {signal['label']}")
+    lines.append(f"    └ {rsi_comment}")
+    lines.append(f"    └ {macd_comment} / {bb_comment}")
     lines.append("")
     if sr:
-        lines.append(f"  サポート: {sr['support']:,.0f}円  "
-                     f"レジスタンス: {sr['resistance']:,.0f}円  "
-                     f"（値幅: {sr['range_pct']:.1f}%）")
+        support    = sr["support"]
+        resistance = sr["resistance"]
+        sup_pct    = (support    - current) / current * 100
+        res_pct    = (resistance - current) / current * 100
+        lines.append(f"  価格の壁")
+        lines.append(f"    サポート(下値目処): {support:,.0f}円  今より{sup_pct:.1f}%")
+        lines.append(f"    レジスタンス(上値目処): {resistance:,.0f}円  今より{res_pct:+.1f}%")
         lines.append("")
-    lines.append("  🤖 AIシナリオ予測（1週間）")
+    lines.append(f"  トレンド予測（統計モデル）")
+    lines.append(f"    5日後: {pred5:,.0f}円  （{chg5:+.1f}%）")
+    lines.append(f"    10日後: {pred10:,.0f}円  （{chg10:+.1f}%）")
+    lines.append("")
+    lines.append("  シナリオ別 来週の値幅予想")
     llm_pred = _llm_price_forecast(code, name, current, signal, trend, sr, context)
     for ln in llm_pred.splitlines():
-        lines.append(f"    {ln}")
+        if "シナリオ" in ln or "確信度" in ln or "根拠" in ln:
+            # 確率・価格帯をパース表示
+            import re
+            m = re.search(r"(強気|基本|弱気)シナリオ[：:]\s*([\d,]+)[〜～～-]([\d,]+).*?（確率(\d+)%）", ln)
+            if m:
+                label_s = m.group(1)
+                lo = float(m.group(2).replace(",", ""))
+                hi = float(m.group(3).replace(",", ""))
+                prob = m.group(4)
+                lo_pct = (lo - current) / current * 100
+                hi_pct = (hi - current) / current * 100
+                icon = "↑" if label_s == "強気" else ("↓" if label_s == "弱気" else "→")
+                lines.append(
+                    f"    {icon} {label_s}シナリオ ({prob}%):  "
+                    f"{lo:,.0f}〜{hi:,.0f}円  "
+                    f"[{lo_pct:+.1f}%〜{hi_pct:+.1f}%]"
+                )
+            elif "確信度" in ln or "根拠" in ln:
+                lines.append(f"    {ln.strip()}")
+        else:
+            lines.append(f"    {ln.strip()}")
 
     # 予測をログに保存（的中率学習のため）
     try:
