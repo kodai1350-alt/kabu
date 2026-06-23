@@ -89,6 +89,16 @@ def _scan_all_signals() -> list[dict]:
             # 期待値スコア（signal score × RR比）
             ev = score * rr
 
+            # 保有日数推定: 目標までの価格差 ÷ トレンド傾き（円/日）
+            slope = trend.get("slope", 0)
+            price_gap = abs(target - entry)
+            if slope > 0.1 and verdict == "今買う":
+                hold_days = max(1, round(price_gap / slope))
+            elif slope > 0.05:
+                hold_days = max(3, round(price_gap / slope))
+            else:
+                hold_days = None  # トレンド弱すぎて推定不可
+
             results.append({
                 "code":      stock["code"],
                 "name":      stock["name"],
@@ -102,7 +112,8 @@ def _scan_all_signals() -> list[dict]:
                 "ev":        ev,
                 "vol_ratio": vol_ratio,
                 "label":     signal["label"],
-                "slope":     trend.get("slope", 0),
+                "slope":     slope,
+                "hold_days": hold_days,
             })
         except Exception:
             continue
@@ -145,7 +156,15 @@ def _build_top_picks(signals: list, trading_ok: bool) -> str:
             f" 目標 {s['target']:,.0f}円({target_pct:+.1f}%) /"
             f" 損切 {s['sl']:,.0f}円({sl_pct:+.1f}%)"
         )
-        lines.append(f"   期待値 {stars}  RR比 1:{rr_str}  {s['label']}{vol_badge}")
+        # 保有日数ラベル
+        if s.get("hold_days"):
+            hd = s["hold_days"]
+            hold_label = f"短期 {hd}日以内" if hd <= 5 else f"中期 {hd}日以内"
+            hold_str = f"  ⏱ {hold_label}"
+        else:
+            hold_str = "  ⏱ トレンド弱く保有日数不定"
+
+        lines.append(f"   期待値 {stars}  RR比 1:{rr_str}{hold_str}{vol_badge}")
         # 根拠1行
         slope_str = f"トレンド{s['slope']:+.0f}円/日" if abs(s["slope"]) > 0.5 else "横ばいトレンド"
         lines.append(f"   根拠: {slope_str} / {s['label']}")
