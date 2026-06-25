@@ -235,11 +235,16 @@ def build_close_report(rm: RiskManager) -> str:
 def send_discord(message: str) -> None:
     url = os.getenv("DISCORD_WEBHOOK_URL")
     if not url or "xxxx" in url:
-        print("[Discord未設定]\n", message)
+        print(f"[Discord未設定 / URL={url!r}]")
+        print(message)
         return
+    print(f"[Discord送信先] URL末尾: ...{url[-20:]}")
     chunks = [message[i:i+1900] for i in range(0, len(message), 1900)]
-    for chunk in chunks:
-        requests.post(url, json={"content": chunk}, timeout=10)
+    for i, chunk in enumerate(chunks):
+        resp = requests.post(url, json={"content": chunk}, timeout=10)
+        print(f"  チャンク{i+1}: HTTP {resp.status_code}")
+        if not resp.ok:
+            print(f"  エラー詳細: {resp.text[:200]}")
 
 
 # ------------------------------------------------------------------ #
