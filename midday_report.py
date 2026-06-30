@@ -29,8 +29,10 @@ def build_midday_report() -> str:
     from market_data import format_macro_snapshot, format_stocks_snapshot, format_news_ddg
     from prediction_log import get_today_predictions
 
-    today = datetime.date.today().strftime("%Y/%m/%d")
-    now = datetime.datetime.now().strftime("%H:%M")
+    JST = datetime.timezone(datetime.timedelta(hours=9))
+    now_jst = datetime.datetime.now(JST)
+    today = now_jst.strftime("%Y/%m/%d")
+    now = now_jst.strftime("%H:%M")
     lines = [f"🍱 昼レポート【{today} {now}】前場まとめ・午後戦略", ""]
 
     # ── マクロ現況 ───────────────────────────────────────────

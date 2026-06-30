@@ -223,8 +223,10 @@ def send_discord(message: str) -> None:
 # ──────────────────────────────────────────────────────────────────── #
 
 def main():
-    today      = datetime.date.today().strftime("%Y/%m/%d")
-    weekday    = ["月", "火", "水", "木", "金", "土", "日"][datetime.date.today().weekday()]
+    JST = datetime.timezone(datetime.timedelta(hours=9))
+    now_jst = datetime.datetime.now(JST)
+    today      = now_jst.strftime("%Y/%m/%d")
+    weekday    = ["月", "火", "水", "木", "金", "土", "日"][now_jst.weekday()]
     discord_url = os.getenv("DISCORD_WEBHOOK_URL", "")
     tavily     = TavilyClient(api_key=os.getenv("TAVILY_API_KEY"))
     exa        = Exa(api_key=os.getenv("EXA_API_KEY"))

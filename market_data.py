@@ -116,7 +116,8 @@ def format_macro_snapshot() -> str:
             return f"{arrow}{abs(c):.1f}%"
         return ""
 
-    now = datetime.datetime.now().strftime("%H:%M")
+    JST = datetime.timezone(datetime.timedelta(hours=9))
+    now = datetime.datetime.now(JST).strftime("%H:%M")
     lines = [f"🌍 グローバル市場スナップショット（{now}現在）", ""]
 
     # ── 米国 ──

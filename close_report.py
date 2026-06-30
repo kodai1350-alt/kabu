@@ -124,8 +124,10 @@ def _fetch_current_price(code: str) -> float | None:
 
 
 def build_close_report(rm: RiskManager) -> str:
-    today = datetime.date.today().strftime("%Y/%m/%d")
-    now = datetime.datetime.now().strftime("%H:%M")
+    JST = datetime.timezone(datetime.timedelta(hours=9))
+    now_jst = datetime.datetime.now(JST)
+    today = now_jst.strftime("%Y/%m/%d")
+    now = now_jst.strftime("%H:%M")
     lines = [f"📊 終了レポート【{today} {now}】", ""]
 
     # ── 本日損益サマリー ──────────────────────────────────────
@@ -275,8 +277,10 @@ def main() -> None:
     # 前場終了モード（11:30）: 軽量版・予測分析なし
     if args and args[0] == "morning-close":
         rm = RiskManager()
-        now = datetime.datetime.now().strftime("%H:%M")
-        today = datetime.date.today().strftime("%Y/%m/%d")
+        JST = datetime.timezone(datetime.timedelta(hours=9))
+        now_jst = datetime.datetime.now(JST)
+        now = now_jst.strftime("%H:%M")
+        today = now_jst.strftime("%Y/%m/%d")
         lines = [f"📊 前場終了レポート【{today} {now}】", ""]
         try:
             from market_data import format_macro_snapshot, format_stocks_snapshot
