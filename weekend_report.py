@@ -8,19 +8,13 @@ import os
 import datetime
 import requests
 from dotenv import load_dotenv
+from watchlist import load_watchlist
 
 load_dotenv()
 
 JST = datetime.timezone(datetime.timedelta(hours=9))
 
-WATCHLIST = [
-    {"code": "7203", "name": "トヨタ自動車"},
-    {"code": "6758", "name": "ソニーグループ"},
-    {"code": "9984", "name": "ソフトバンクグループ"},
-    {"code": "4063", "name": "信越化学工業"},
-    {"code": "8035", "name": "東京エレクトロン"},
-    {"code": "6857", "name": "アドバンテスト"},
-]
+WATCHLIST = load_watchlist()
 
 # 来週の重要イベント検索キーワード
 WEEKLY_QUERIES = [

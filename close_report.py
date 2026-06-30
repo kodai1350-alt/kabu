@@ -20,20 +20,14 @@ from pathlib import Path
 from dotenv import load_dotenv
 from risk_manager import RiskManager
 from technical import technical_scan
+from watchlist import load_watchlist
 
 load_dotenv()
 
 HOLDINGS_FILE = Path(__file__).parent / "holdings.json"
 ACCOUNT_BALANCE = float(os.getenv("ACCOUNT_BALANCE", "1000000"))
 
-STOCK_NAMES = {
-    "7203": "トヨタ自動車",
-    "6758": "ソニーグループ",
-    "9984": "ソフトバンクグループ",
-    "4063": "信越化学工業",
-    "8035": "東京エレクトロン",
-    "6857": "アドバンテスト",
-}
+STOCK_NAMES = {s["code"]: s["name"] for s in load_watchlist()}
 
 
 # ------------------------------------------------------------------ #
