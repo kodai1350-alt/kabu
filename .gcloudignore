@@ -1,0 +1,12 @@
+.git
+.env
+.env.*
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+api_usage.json
+holdings.json
+prediction_log.json
+signal_weights.json
+*.log
